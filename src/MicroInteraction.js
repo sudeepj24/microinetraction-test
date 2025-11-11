@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import './MicroInteraction.css';
 
 function MicroInteraction({ selectedTemplate = 'template1' }) {
@@ -84,6 +84,9 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showCTA, setShowCTA] = useState(true);
   const [displayState, setDisplayState] = useState(defaultMobileState === 'collapsed');
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [touchStartY, setTouchStartY] = useState(0);
 
   const renderHeading = useCallback((titleType) => {
     const className = 'absolute top-[28px] text-white font-bold heading-tags z-10';
@@ -104,6 +107,7 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
     if (isTemplate2 && !isCollapsed && !isTransitioning) {
       setIsTransitioning(true);
       setShowCTA(false); 
+      setDragOffset(0);
       const wrapper = document.querySelector('.Micro-wrapper');
       if (wrapper) {
         wrapper.style.transition = 'max-height 0.5s ease-in-out';
@@ -118,6 +122,7 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
     } else if (isTemplate2 && isCollapsed) {
       setDisplayState(false);
       setIsCollapsed(false);
+      setDragOffset(0);
       const wrapper = document.querySelector('.Micro-wrapper');
       if (wrapper) {
         wrapper.style.transition = 'max-height 0.5s ease-in-out';
@@ -128,6 +133,7 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
       }, 125); 
     } else {
       setIsCollapsed(prev => !prev);
+      setDragOffset(0);
     }
   };
 
@@ -169,29 +175,55 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
     );
   };
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!isCollapsed && window.scrollY > 10) {
-        if (isTemplate2) {
-          setShowCTA(false);
-          const wrapper = document.querySelector('.Micro-wrapper');
-          if (wrapper) {
-            wrapper.style.transition = 'max-height 0.5s ease-in-out';
-            wrapper.style.maxHeight = '60px';
-            setTimeout(() => {
-              setDisplayState(true); 
-              setIsCollapsed(true);
-            }, 250);
-          }
-        } else {
-          setIsCollapsed(true);
-        }
+  const handleTouchStart = (e) => {
+    if (isCollapsed) return;
+    setIsDragging(true);
+    setTouchStartY(e.touches[0].clientY);
+    setDragOffset(0);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging || isCollapsed) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = touchStartY - currentY;
+    if (deltaY > 0) { // Only allow upward drag
+      const maxDrag = 518 - 60; // expanded height - collapsed height
+      const newOffset = Math.min(deltaY, maxDrag);
+      setDragOffset(newOffset);
+      e.preventDefault(); // Prevent scrolling
+      
+      // Update max-height during drag
+      const wrapper = document.querySelector('.Micro-wrapper');
+      if (wrapper) {
+        const newHeight = 518 - newOffset;
+        wrapper.style.maxHeight = `${Math.max(newHeight, 60)}px`;
       }
-    };
-    
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isCollapsed, isTemplate2]);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (dragOffset > 0) {
+      // Collapse the banner
+      if (isTemplate2) {
+        setShowCTA(false);
+        const wrapper = document.querySelector('.Micro-wrapper');
+        if (wrapper) {
+          wrapper.style.transition = 'max-height 0.5s ease-in-out';
+          wrapper.style.maxHeight = '60px';
+          setTimeout(() => {
+            setDisplayState(true);
+            setIsCollapsed(true);
+            setDragOffset(0);
+          }, 250);
+        }
+      } else {
+        setIsCollapsed(true);
+        setDragOffset(0);
+      }
+    }
+  };
 
   return (
     <div className='micro-int-div'>
@@ -243,7 +275,14 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
       )}
       <div
         className={`Micro-wrapper ${isCollapsed ? 'collapsed' : 'expanded'} ${isTemplate2 ? 'template2' : 'template1'}`}
-        onClick={handleToggle}
+        onClick={isDragging ? undefined : handleToggle}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          maxHeight: isDragging && !isCollapsed ? `${Math.max(518 - dragOffset, 60)}px` : undefined,
+          transition: isDragging ? 'none' : 'max-height 0.5s ease-in-out'
+        }}
       >
         {!isTemplate2 && renderHeading(titleType)}
         {isTemplate2 ? (
