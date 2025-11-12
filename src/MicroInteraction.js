@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import './MicroInteraction.css';
 
 function MicroInteraction({ selectedTemplate = 'template1' }) {
@@ -179,18 +179,20 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
     if (isCollapsed) return;
     setIsDragging(true);
     setTouchStartY(e.touches[0].clientY);
-    setDragOffset(0);
+    // Don't set dragOffset here - wait for threshold in touchMove
   };
 
   const handleTouchMove = (e) => {
     if (!isDragging || isCollapsed) return;
     const currentY = e.touches[0].clientY;
     const deltaY = touchStartY - currentY;
-    if (deltaY > 0) { // Only allow upward drag
+    
+    // Only prevent scrolling and start drag effect if significant upward movement
+    if (deltaY > 20) { // 20px threshold for drag gesture
       const maxDrag = 518 - 60; // expanded height - collapsed height
-      const newOffset = Math.min(deltaY, maxDrag);
+      const newOffset = Math.min(deltaY - 20, maxDrag); // subtract threshold
       setDragOffset(newOffset);
-      e.preventDefault(); // Prevent scrolling
+      e.preventDefault(); // Prevent scrolling only for drag gestures
       
       // Update max-height during drag
       const wrapper = document.querySelector('.Micro-wrapper');
@@ -199,12 +201,21 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
         wrapper.style.maxHeight = `${Math.max(newHeight, 60)}px`;
       }
     }
+    // For small movements (< 20px), allow normal scrolling
   };
 
   const handleTouchEnd = () => {
     if (!isDragging) return;
     setIsDragging(false);
-    if (dragOffset > 0) {
+    
+    if (dragOffset === 0) {
+      // No significant drag - reset any inline styles
+      const wrapper = document.querySelector('.Micro-wrapper');
+      if (wrapper) {
+        wrapper.style.maxHeight = '';
+        wrapper.style.height = '';
+      }
+    } else {
       // Collapse the banner
       if (isTemplate2) {
         setShowCTA(false);
@@ -224,6 +235,30 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
       }
     }
   };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!isCollapsed && window.scrollY > 10) {
+        if (isTemplate2) {
+          setShowCTA(false);
+          const wrapper = document.querySelector('.Micro-wrapper');
+          if (wrapper) {
+            wrapper.style.transition = 'max-height 0.5s ease-in-out';
+            wrapper.style.maxHeight = '60px';
+            setTimeout(() => {
+              setDisplayState(true);
+              setIsCollapsed(true);
+            }, 250);
+          }
+        } else {
+          setIsCollapsed(true);
+        }
+      }
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isCollapsed, isTemplate2]);
 
   return (
     <div className='micro-int-div'>
@@ -280,8 +315,10 @@ function MicroInteraction({ selectedTemplate = 'template1' }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          maxHeight: isDragging && !isCollapsed ? `${Math.max(518 - dragOffset, 60)}px` : undefined,
-          transition: isDragging ? 'none' : 'max-height 0.5s ease-in-out'
+          height: !isCollapsed ? '518px' : undefined,
+          maxHeight: dragOffset > 0 ? `${Math.max(518 - dragOffset, 60)}px` : undefined,
+          transition: dragOffset > 0 ? 'none' : 'max-height 0.5s ease-in-out',
+          touchAction: 'none'
         }}
       >
         {!isTemplate2 && renderHeading(titleType)}
